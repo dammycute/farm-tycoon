@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Farm Tycoon</title>
+  <link rel="icon" href="assets/egg.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="world"></canvas>
+
+  <header class="hud-top">
+    <div class="stat coins"><span class="coin-ico">🪙</span><b id="coins">0</b></div>
+    <div class="stat prog">
+      <img src="assets/farmer.png" alt="">
+      <div class="bar"><div id="prog-fill"></div><span id="prog-text"></span></div>
+    </div>
+    <div class="stat basket" title="What you're carrying">🧺 <b id="basket">0/6</b></div>
+    <span class="spacer"></span>
+    <button class="round" data-act="upgrades" aria-label="Upgrades">⬆️</button>
+    <button id="mute" class="round" data-act="mute" aria-label="Toggle sound">🔊</button>
+  </header>
+
+  <div id="hint" class="hint">👆 Drag anywhere to walk · or use <b>WASD</b></div>
+  <div id="joy" class="joy" hidden><div class="knob"></div></div>
+
+  <div id="modal" class="modal" hidden></div>
+  <div id="toast" class="toast" role="status"></div>
+  <script type="module" src="src/ui.js"></script>
+</body>
+</html>
