@@ -63,11 +63,28 @@ export const ZONES = [
 ];
 export const START_UNLOCKED = ['field:wheat1', 'shelf:wheat'];
 
+// Repeatable buy spots: each time one fills you get one more, and the next costs more (up to max).
+export const BUYS = [
+  { id: 'hand',   label: '👷 Hire Worker', needs: 'hire:hand1', base: 150, growth: 1.7,  max: 6, at: [-1.2, 4.2] },
+  { id: 'coop',   label: '🐔 +1 Chicken',  needs: 'pen:coop',   base: 40,  growth: 1.45, max: 8, at: [8.5, -1.5] },
+  { id: 'cowpen', label: '🐄 +1 Cow',      needs: 'pen:cowpen', base: 120, growth: 1.5,  max: 5, at: [17.4, -1] },
+];
+export const buyCost = (b, n) => Math.round(b.base * b.growth ** n);
+
 export const WORKER_LOOKS = {
   cashier: { shirt: '#4f7fb5', pants: '#2f3e57', hat: 'cap', hatColor: '#4f7fb5' },
   hand1:   { shirt: '#5aa04a', pants: '#6b5a3a', hat: 'cap', hatColor: '#f4b400' },
   hand2:   { shirt: '#e08a2c', pants: '#6b5a3a', hat: 'cap', hatColor: '#c0533a' },
 };
+// Looks for workers hired from the "Hire Worker" spot, used in turn.
+export const EXTRA_LOOKS = [
+  { shirt: '#8e6cc4', pants: '#4a3f5a', hat: 'cap', hatColor: '#ffd23f' },
+  { shirt: '#3fa7a0', pants: '#2f4a48', hat: 'straw', hatColor: '#e6c86e' },
+  { shirt: '#d9534f', pants: '#5a4632', hat: 'cap', hatColor: '#4f7fb5' },
+  { shirt: '#f2c14e', pants: '#3f4a5a', hat: 'cap', hatColor: '#5aa04a' },
+  { shirt: '#6d8fd6', pants: '#3a3a3a', hat: 'straw', hatColor: '#e6c86e' },
+  { shirt: '#c96fa0', pants: '#4a3f5a', hat: 'cap', hatColor: '#e08a2c' },
+];
 
 export const UPGRADES = {
   speed:       { name: 'Farmer speed',    icon: '👟', max: 6, cost: lv => Math.round(40 * 1.9 ** lv) },

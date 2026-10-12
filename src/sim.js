@@ -2,7 +2,7 @@
 // Every transfer takes an `owner` ({ stack: [] }) so the player and workers share the same rules.
 import {
   ITEMS, FIELDS, FIELD_GRID, PENS, MACHINES, SHELVES, CAPS, ZONES, UPGRADES,
-  playerCap, workerCap, TRUCK_AWAY,
+  playerCap, workerCap, TRUCK_AWAY, buyCost,
 } from './data.js';
 
 // Game clock for timers. Equals wall-clock time unless a test fast-forwards it with skipTime().
@@ -11,6 +11,8 @@ export const now = () => Date.now() + clockOffset;
 export const skipTime = ms => { clockOffset += ms; };
 
 export const isUnlocked = (S, key) => S.unlocked.includes(key);
+// Animals in a pen: the starting herd plus any bought at the "+1" spot.
+export const penCount = (S, id) => PENS[id].count + (S.extra?.[id] || 0);
 export const plotCount = () => FIELD_GRID.cols * FIELD_GRID.rows;
 export const growMs = (S, field) => FIELDS[field].grow * 1000 * 0.85 ** S.upgrades.growth;
 export const priceOf = (S, item) => Math.round(ITEMS[item].price * (1 + 0.2 * S.upgrades.price));
@@ -23,6 +25,8 @@ export function ensure(S) {
   if (S.pile) S.coins += S.pile;
   delete S.pile;
   S.stallCoins ||= {};
+  S.extra ||= {};
+  S.buyPaid ||= {};
   for (const w of S.workers) if (w.kind === 'cashier') w.kind = 'collector';
   // Drop stall records for stalls that aren't actually unlocked (or got corrupted).
   for (const rec of [S.shelves, S.stallCoins]) {
@@ -51,7 +55,7 @@ export function tick(S, dt) {
   for (const [id, p] of Object.entries(S.pens)) {
     const def = PENS[id];
     if (p.feed <= 0 || p.out >= CAPS.tray) continue;
-    p.progress += (dt * def.count) / def.time;
+    p.progress += (dt * penCount(S, id)) / def.time;
     while (p.progress >= 1 && p.feed > 0 && p.out < CAPS.tray) {
       p.progress -= 1;
       p.feed--;
@@ -228,4 +232,21 @@ export function buyUpgrade(S, key) {
   S.coins -= cost;
   S.upgrades[key]++;
   return { ok: true };
+}
+
+// ---------- repeatable buys (more workers, more animals) ----------
+export const buyVisible = (S, b) => isUnlocked(S, b.needs) && (S.extra[b.id] || 0) < b.max;
+
+// Pour up to `amount` coins into a buy spot. Returns { paid, bought } where bought is set when one completes.
+export function payBuy(S, b, amount) {
+  const n = S.extra[b.id] || 0, cost = buyCost(b, n), paid = S.buyPaid[b.id] || 0;
+  const pay = Math.min(amount, S.coins, cost - paid);
+  if (pay <= 0) return { paid: 0 };
+  S.coins -= pay;
+  S.buyPaid[b.id] = paid + pay;
+  if (S.buyPaid[b.id] < cost) return { paid: pay };
+  S.buyPaid[b.id] = 0;
+  S.extra[b.id] = n + 1;
+  if (b.id === 'hand') S.workers.push({ id: `hand${n + 3}`, kind: 'farmhand', stack: [] });
+  return { paid: pay, bought: b, count: n + 1 };
 }

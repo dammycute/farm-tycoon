@@ -97,6 +97,12 @@ function fx(ev) {
     sfx.truck();
     pulse(el.coinStat);
   }
+  if (ev.bought) {
+    const what = { hand: 'New worker hired!', coop: 'New chicken!', cowpen: 'New cow!' }[ev.bought.id];
+    toast(`🎉 <b>${what}</b> (${ev.count}/${ev.bought.max})`, 2400);
+    sfx.unlock();
+    save(S);
+  }
   if (ev.unlocked) {
     toast(`🎉 <b>${ev.unlocked.label}</b> unlocked!`, 3000);
     sfx.unlock();

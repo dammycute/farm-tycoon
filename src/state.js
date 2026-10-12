@@ -14,6 +14,8 @@ export function newState() {
     machines: {},
     shelves: {},
     stallCoins: {},
+    extra: {},
+    buyPaid: {},
     stack: [],
     workers: [],
     truck: null,

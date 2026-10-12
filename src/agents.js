@@ -4,7 +4,7 @@ import * as M from './models.js';
 import * as Sim from './sim.js';
 import {
   FIELDS, PENS, MACHINES, SHELVES, STALL_COINS, BOUNDS, ITEMS, CAPS, ROAD_Z,
-  WORKER_LOOKS, WORKER_HOME, COLLECTOR_HOME, PLAYER_START, CUSTOMERS, playerSpeed, workerSpeed,
+  WORKER_LOOKS, EXTRA_LOOKS, WORKER_HOME, COLLECTOR_HOME, PLAYER_START, CUSTOMERS, playerSpeed, workerSpeed, buyCost,
 } from './data.js';
 import { plotPos } from './world.js';
 
@@ -152,6 +152,16 @@ export class Player extends Carrier {
       return;
     }
 
+    const buy = this.world.buyAt(S, this.pos);
+    if (buy) {
+      const r = Sim.payBuy(S, buy, Math.max(1, Math.ceil(buyCost(buy, S.extra[buy.id] || 0) / 45)));
+      if (r.paid) {
+        this.cool = 0.035;
+        fx({ coin: true, from: this.pos.clone().setY(1.2), to: V(...buy.at).setY(0.2), sound: 'pay', bought: r.bought, count: r.count });
+      }
+      return;
+    }
+
     if (!pad) return;
     if (pad.kind === 'cash') {
       const amt = Sim.collectStall(S, pad.item);
@@ -199,11 +209,12 @@ function urgency(S, pad, demand, keeper) {
 
 class Farmhand extends Carrier {
   constructor(world, data, i) {
-    super(world, WORKER_LOOKS[data.id]);
+    const num = Number(data.id.replace('hand', '')) || 1;
+    super(world, WORKER_LOOKS[data.id] || EXTRA_LOOKS[(num - 3) % EXTRA_LOOKS.length]);
     this.data = data;
-    // The second farmhand is an animal keeper: prefers troughs, trays and machines.
-    this.keeper = data.id === 'hand2';
-    this.home = V(WORKER_HOME[0] + i * 1.2, WORKER_HOME[1]);
+    // Every second farmhand is an animal keeper: prefers troughs, trays and machines.
+    this.keeper = num % 2 === 0;
+    this.home = V(WORKER_HOME[0] + (i % 4) * 1.2, WORKER_HOME[1] - Math.floor(i / 4) * 1.2);
     this.pos.copy(this.home);
     this.mode = 'gather';
     this.target = null;
