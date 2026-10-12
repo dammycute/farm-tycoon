@@ -1,7 +1,7 @@
 // The 3D farm: scene, follow camera, stations built from data, per-frame visual sync and flying-item effects.
 import * as THREE from 'three';
 import {
-  FIELDS, FIELD_GRID, PENS, MACHINES, SHELVES, STALL_COINS, TRUCK, ROAD_Z, ZONES, CAPS, ITEMS,
+  FIELDS, FIELD_GRID, PENS, MACHINES, SHELVES, STALL_COINS, TRUCK, ROAD_Z, ZONES, BUYS, CAPS, ITEMS, buyCost,
 } from './data.js';
 import * as M from './models.js';
 import * as Sim from './sim.js';
@@ -190,7 +190,8 @@ export class World {
       g.add(hungry);
       const animals = [];
       const ar = M.rng(id === 'coop' ? 3 : 5);
-      for (let i = 0; i < p.count; i++) {
+      const maxHerd = p.count + (BUYS.find(b => b.id === id)?.max || 0);
+      for (let i = 0; i < maxHerd; i++) {
         const obj = p.animal === 'chicken'
           ? M.sprite(M.imageTexture('assets/chicken.png'), 1.1, 337 / 424, { alphaTest: 0.3 })
           : M.makeCow();
@@ -263,6 +264,14 @@ export class World {
       this.scene.add(g);
       this.zones[z.id] = g;
     }
+    this.buys = {};
+    for (const b of BUYS) {
+      const g = M.makeZone();
+      g.position.set(b.at[0], 0, b.at[1]);
+      g.visible = false;
+      this.scene.add(g);
+      this.buys[b.id] = g;
+    }
   }
 
   // ---------- queries ----------
@@ -280,6 +289,10 @@ export class World {
 
   zoneAt(S, pos) {
     return ZONES.find(z => Sim.zoneVisible(S, z) && Math.abs(pos.x - z.at[0]) < 1.1 && Math.abs(pos.z - z.at[1]) < 1.1);
+  }
+
+  buyAt(S, pos) {
+    return BUYS.find(b => Sim.buyVisible(S, b) && Math.abs(pos.x - b.at[0]) < 1.1 && Math.abs(pos.z - b.at[1]) < 1.1);
   }
 
   activeObstacles(S) {
@@ -385,7 +398,20 @@ export class World {
       v.outPile.set(p.out);
       v.hungry.visible = p.feed === 0;
       v.hungry.position.y = 1.2 + Math.abs(Math.sin(time * 3)) * 0.25;
-      v.animals.forEach(a => this.wander(a, v, dt, time, p.feed > 0, id));
+      const herd = Sim.penCount(S, id);
+      v.animals.forEach((a, i) => {
+        const was = a.obj.visible;
+        a.obj.visible = i < herd;
+        if (a.obj.visible && !was && this.started) a.born = time; // newly bought: pop in
+        a.base ??= a.obj.scale.clone();
+        if (a.born !== undefined) {
+          const k = Math.min(1, (time - a.born) / 0.5);
+          const s = k < 1 ? k * (1 + Math.sin(k * Math.PI) * 0.4) : 1;
+          a.obj.scale.copy(a.base).multiplyScalar(s);
+          if (k >= 1) a.born = undefined;
+        }
+        if (a.obj.visible) this.wander(a, v, dt, time, p.feed > 0, id);
+      });
     }
 
     // Machines
@@ -438,6 +464,15 @@ export class World {
       g.userData.fill.scale.x = Math.max(0.001, (paid / z.cost) * g.userData.size * 0.86);
       M.setLabel(g.userData.label, `${z.label}\n🪙 ${z.cost - paid}`);
       g.userData.label.position.y = 0.4 + Math.sin(time * 2.5) * 0.08;
+    }
+    for (const b of BUYS) {
+      const g = this.buys[b.id];
+      g.visible = Sim.buyVisible(S, b);
+      if (!g.visible) continue;
+      const n = S.extra[b.id] || 0, cost = buyCost(b, n), paid = S.buyPaid[b.id] || 0;
+      g.userData.fill.scale.x = Math.max(0.001, (paid / cost) * g.userData.size * 0.86);
+      M.setLabel(g.userData.label, `${b.label} ${n}/${b.max}\n🪙 ${cost - paid}`);
+      g.userData.label.position.y = 0.4 + Math.sin(time * 2.5 + 1) * 0.08;
     }
 
     // Pop-in for newly unlocked things
