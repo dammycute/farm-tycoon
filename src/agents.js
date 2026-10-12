@@ -180,10 +180,29 @@ function destinations(S, world, item) {
   return out;
 }
 
+// How badly a drop-off spot needs goods: multiplies the (squared) distance, so lower wins.
+// Empty troughs come first so animals never sit idle, then stalls with customers waiting.
+function urgency(S, pad, demand, keeper) {
+  switch (pad.kind) {
+    case 'penIn': {
+      const f = S.pens[pad.id].feed;
+      return (f === 0 ? 0.03 : f < 4 ? 0.25 : 1) * (keeper ? 0.3 : 1);
+    }
+    case 'machIn': {
+      const m = S.machines[pad.id];
+      return (m.in < MACHINES[pad.id].need ? 0.12 : m.in < 6 ? 0.5 : 1) * (keeper ? 0.3 : 1);
+    }
+    case 'shelf': return demand.has(pad.item) ? 0.1 : S.shelves[pad.item] < 3 ? 0.4 : 1;
+    default: return 0.7;
+  }
+}
+
 class Farmhand extends Carrier {
   constructor(world, data, i) {
     super(world, WORKER_LOOKS[data.id]);
     this.data = data;
+    // The second farmhand is an animal keeper: prefers troughs, trays and machines.
+    this.keeper = data.id === 'hand2';
     this.home = V(WORKER_HOME[0] + i * 1.2, WORKER_HOME[1]);
     this.pos.copy(this.home);
     this.mode = 'gather';
@@ -214,7 +233,7 @@ class Farmhand extends Carrier {
       const demand = others.demand || new Set();
       for (const item of new Set(stack)) {
         for (const pad of destinations(S, this.world, item)) {
-          const d = pad.pos.distanceToSquared(this.pos) * (pad.kind === 'shelf' && demand.has(item) ? 0.1 : 1);
+          const d = pad.pos.distanceToSquared(this.pos) * urgency(S, pad, demand, this.keeper);
           if (d < bd) { bd = d; best = { kind: 'pad', pad, pos: pad.pos.clone() }; }
         }
       }
@@ -226,9 +245,9 @@ class Farmhand extends Carrier {
     const demand = others.demand || new Set();
     let best = null, bd = Infinity;
     // Nearest source wins, but anything customers are waiting for counts as much closer.
-    const consider = (key, pos, t, item) => {
+    const consider = (key, pos, t, item, boost = 1) => {
       if (taken.has(key)) return;
-      const d = pos.distanceToSquared(this.pos) * (demand.has(item) ? 0.1 : 1);
+      const d = pos.distanceToSquared(this.pos) * (demand.has(item) ? 0.1 : 1) * boost;
       if (d < bd) { bd = d; best = { ...t, key, pos }; }
     };
     for (const id of Object.keys(S.plots)) {
@@ -240,14 +259,17 @@ class Farmhand extends Carrier {
     }
     for (const [id, p] of Object.entries(S.pens)) {
       if (p.out > 0 && destinations(S, this.world, PENS[id].product).length) {
+        // A full tray stops the animals, so fuller trays get picked up sooner.
         const pad = this.world.pad('penOut', id);
-        consider(`penOut:${id}`, pad.pos.clone(), { kind: 'pad', pad }, PENS[id].product);
+        const boost = (p.out >= CAPS.tray * 0.6 ? 0.2 : 0.6) * (this.keeper ? 0.4 : 1);
+        consider(`penOut:${id}`, pad.pos.clone(), { kind: 'pad', pad }, PENS[id].product, boost);
       }
     }
     for (const [id, m] of Object.entries(S.machines)) {
       if (m.out > 0 && destinations(S, this.world, MACHINES[id].output).length) {
         const pad = this.world.pad('machOut', id);
-        consider(`machOut:${id}`, pad.pos.clone(), { kind: 'pad', pad }, MACHINES[id].output);
+        const boost = (m.out >= CAPS.machineOut * 0.6 ? 0.2 : 0.6) * (this.keeper ? 0.4 : 1);
+        consider(`machOut:${id}`, pad.pos.clone(), { kind: 'pad', pad }, MACHINES[id].output, boost);
       }
     }
     if (best) { this.target = best; return; }

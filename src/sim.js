@@ -5,6 +5,11 @@ import {
   playerCap, workerCap, TRUCK_AWAY,
 } from './data.js';
 
+// Game clock for timers. Equals wall-clock time unless a test fast-forwards it with skipTime().
+let clockOffset = 0;
+export const now = () => Date.now() + clockOffset;
+export const skipTime = ms => { clockOffset += ms; };
+
 export const isUnlocked = (S, key) => S.unlocked.includes(key);
 export const plotCount = () => FIELD_GRID.cols * FIELD_GRID.rows;
 export const growMs = (S, field) => FIELDS[field].grow * 1000 * 0.85 ** S.upgrades.growth;
@@ -65,7 +70,7 @@ export function tick(S, dt) {
     }
   }
   const tr = S.truck;
-  if (tr && !tr.order && Date.now() >= tr.awayUntil) newTruckOrder(S);
+  if (tr && !tr.order && now() >= tr.awayUntil) newTruckOrder(S);
 }
 
 // Time passes while the game is closed: run production for up to two hours.
@@ -85,12 +90,12 @@ function takeItem(owner, item) {
 
 // ---------- transfers (each moves one item; returns the item id or null) ----------
 export function isRipe(S, field, i) {
-  return Date.now() >= S.plots[field][i];
+  return now() >= S.plots[field][i];
 }
 
 export function harvest(S, owner, field, i) {
   if (!hasRoom(S, owner) || !isRipe(S, field, i)) return null;
-  S.plots[field][i] = Date.now() + growMs(S, field);
+  S.plots[field][i] = now() + growMs(S, field);
   const crop = FIELDS[field].crop;
   owner.stack.push(crop);
   return crop;
@@ -170,7 +175,7 @@ export function loadTruck(S, owner) {
   S.coins += reward;
   tr.order = null;
   tr.loaded = {};
-  tr.awayUntil = Date.now() + TRUCK_AWAY * 1000;
+  tr.awayUntil = now() + TRUCK_AWAY * 1000;
   return { item, reward };
 }
 

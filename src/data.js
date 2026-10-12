@@ -54,7 +54,7 @@ export const ZONES = [
   { id: 'cornShelf',   cost: 80,  after: 'corn1',      unlock: 'shelf:corn',     label: '🌽 Corn Stand',       at: [0, 7.5] },
   { id: 'cowpen',      cost: 250, after: 'corn1',      unlock: 'pen:cowpen',     label: '🐄 Cow Pasture',      at: [13, -1] },
   { id: 'milkShelf',   cost: 120, after: 'cowpen',     unlock: 'shelf:milk',     label: '🥛 Milk Stand',       at: [3, 7.5] },
-  { id: 'hand2',       cost: 300, after: 'cashier',    unlock: 'hire:hand2',     label: '👷 Hire Farmhand',    at: [-3, 0.5] },
+  { id: 'hand2',       cost: 300, after: 'cashier',    unlock: 'hire:hand2',     label: '🧑‍🌾 Hire Animal Keeper', at: [-3, 0.5] },
   { id: 'corn2',       cost: 300, after: 'cowpen',     unlock: 'field:corn2',    label: '🌽 Corn Field',       at: [-15, -7] },
   { id: 'bakery',      cost: 400, after: 'milkShelf',  unlock: 'machine:bakery', label: '🥖 Bakery',           at: [2, -10] },
   { id: 'breadShelf',  cost: 200, after: 'bakery',     unlock: 'shelf:bread',    label: '🍞 Bread Stand',      at: [6, 7.5] },

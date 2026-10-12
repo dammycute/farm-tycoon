@@ -350,7 +350,7 @@ export class World {
 
   // ---------- per-frame sync ----------
   sync(S, dt, time) {
-    const now = Date.now();
+    const now = Sim.now();
 
     for (const [key, e] of Object.entries(this.ent)) {
       const on = Sim.isUnlocked(S, key);

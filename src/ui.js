@@ -235,12 +235,17 @@ let simT = 1000;
 window.farm = {
   world, agents, Sim,
   get state() { return S; },
-  run(secs, move = { x: 0, z: 0 }) { for (let k = 0; k < secs * 30; k++) step(1 / 30, (simT += 1 / 30), move); world.render(); renderHud(); },
+  run(secs, move = { x: 0, z: 0 }) {
+    for (let k = 0; k < secs * 30; k++) { Sim.skipTime(1000 / 30); step(1 / 30, (simT += 1 / 30), move); }
+    world.render();
+    renderHud();
+  },
   walkTo(x, z, maxSecs = 20) {
     const p = agents.player.pos;
     for (let k = 0; k < maxSecs * 30; k++) {
       const dx = x - p.x, dz = z - p.z, d = Math.hypot(dx, dz);
       if (d < 0.15) break;
+      Sim.skipTime(1000 / 30);
       step(1 / 30, (simT += 1 / 30), { x: dx / Math.max(d, 1), z: dz / Math.max(d, 1) });
     }
     world.render();
