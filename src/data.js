@@ -31,8 +31,9 @@ export const MACHINES = {
 };
 
 export const SHELVES = { wheat: [-6, 7.5], egg: [-3, 7.5], corn: [0, 7.5], milk: [3, 7.5], bread: [6, 7.5], cheese: [9, 7.5] };
-export const COUNTER = [14.5, 7.8];
-export const COIN_PILE = [17.2, 6.4];
+// Customers pay as they take goods: coins pile up beside each stall at this offset.
+export const STALL_COINS = [1.5, -0.35];
+export const COLLECTOR_HOME = [12, 4.6];
 export const TRUCK = [-14, 12.2];
 export const ROAD_Z = 13;
 export const PLAYER_START = [0, 3];
@@ -43,24 +44,24 @@ export const CAPS = { shelf: 12, feed: 10, tray: 12, machineIn: 12, machineOut: 
 
 // Unlock zones: stand on one to pour coins in. A zone appears once the zone in `after` is done.
 export const ZONES = [
-  { id: 'coop',        cost: 30,  after: null,         unlock: 'pen:coop',       label: '🐔 Chicken Coop', at: [4, -1] },
-  { id: 'eggShelf',    cost: 20,  after: 'coop',       unlock: 'shelf:egg',      label: '🥚 Egg Stand',    at: [-3, 7.5] },
-  { id: 'wheat2',      cost: 60,  after: 'eggShelf',   unlock: 'field:wheat2',   label: '🌾 Wheat Field',  at: [-8, -7] },
-  { id: 'truck',       cost: 80,  after: 'eggShelf',   unlock: 'truck',          label: '🚚 Order Truck',  at: [-14, 9.4] },
-  { id: 'cashier',     cost: 120, after: 'wheat2',     unlock: 'hire:cashier',   label: '🧑‍💼 Hire Cashier', at: [12, 5.2] },
-  { id: 'corn1',       cost: 150, after: 'truck',      unlock: 'field:corn1',    label: '🌽 Corn Field',   at: [-15, 0] },
-  { id: 'cornShelf',   cost: 80,  after: 'corn1',      unlock: 'shelf:corn',     label: '🌽 Corn Stand',   at: [0, 7.5] },
-  { id: 'cowpen',      cost: 250, after: 'corn1',      unlock: 'pen:cowpen',     label: '🐄 Cow Pasture',  at: [13, -1] },
-  { id: 'milkShelf',   cost: 120, after: 'cowpen',     unlock: 'shelf:milk',     label: '🥛 Milk Stand',   at: [3, 7.5] },
-  { id: 'hand1',       cost: 200, after: 'cashier',    unlock: 'hire:hand1',     label: '👷 Hire Farmhand', at: [-3, 3.5] },
-  { id: 'corn2',       cost: 300, after: 'cowpen',     unlock: 'field:corn2',    label: '🌽 Corn Field',   at: [-15, -7] },
-  { id: 'bakery',      cost: 400, after: 'milkShelf',  unlock: 'machine:bakery', label: '🥖 Bakery',       at: [2, -10] },
-  { id: 'breadShelf',  cost: 200, after: 'bakery',     unlock: 'shelf:bread',    label: '🍞 Bread Stand',  at: [6, 7.5] },
-  { id: 'hand2',       cost: 500, after: 'bakery',     unlock: 'hire:hand2',     label: '👷 Hire Farmhand', at: [-3, 0.5] },
-  { id: 'dairy',       cost: 700, after: 'breadShelf', unlock: 'machine:dairy',  label: '🧀 Dairy',        at: [12, -10] },
-  { id: 'cheeseShelf', cost: 350, after: 'dairy',      unlock: 'shelf:cheese',   label: '🧀 Cheese Stand', at: [9, 7.5] },
+  { id: 'coop',        cost: 30,  after: null,         unlock: 'pen:coop',       label: '🐔 Chicken Coop',     at: [4, -1] },
+  { id: 'eggShelf',    cost: 20,  after: 'coop',       unlock: 'shelf:egg',      label: '🥚 Egg Stand',        at: [-3, 7.5] },
+  { id: 'truck',       cost: 50,  after: 'coop',       unlock: 'truck',          label: '🚚 Order Truck',      at: [-14, 9.4] },
+  { id: 'hand1',       cost: 80,  after: 'eggShelf',   unlock: 'hire:hand1',     label: '👷 Hire Farmhand',    at: [-3, 3.5] },
+  { id: 'wheat2',      cost: 60,  after: 'eggShelf',   unlock: 'field:wheat2',   label: '🌾 Wheat Field',      at: [-8, -7] },
+  { id: 'cashier',     cost: 120, after: 'hand1',      unlock: 'hire:cashier',   label: '💰 Hire Coin Collector', at: [12, 4.6] },
+  { id: 'corn1',       cost: 150, after: 'truck',      unlock: 'field:corn1',    label: '🌽 Corn Field',       at: [-15, 0] },
+  { id: 'cornShelf',   cost: 80,  after: 'corn1',      unlock: 'shelf:corn',     label: '🌽 Corn Stand',       at: [0, 7.5] },
+  { id: 'cowpen',      cost: 250, after: 'corn1',      unlock: 'pen:cowpen',     label: '🐄 Cow Pasture',      at: [13, -1] },
+  { id: 'milkShelf',   cost: 120, after: 'cowpen',     unlock: 'shelf:milk',     label: '🥛 Milk Stand',       at: [3, 7.5] },
+  { id: 'hand2',       cost: 300, after: 'cashier',    unlock: 'hire:hand2',     label: '👷 Hire Farmhand',    at: [-3, 0.5] },
+  { id: 'corn2',       cost: 300, after: 'cowpen',     unlock: 'field:corn2',    label: '🌽 Corn Field',       at: [-15, -7] },
+  { id: 'bakery',      cost: 400, after: 'milkShelf',  unlock: 'machine:bakery', label: '🥖 Bakery',           at: [2, -10] },
+  { id: 'breadShelf',  cost: 200, after: 'bakery',     unlock: 'shelf:bread',    label: '🍞 Bread Stand',      at: [6, 7.5] },
+  { id: 'dairy',       cost: 700, after: 'breadShelf', unlock: 'machine:dairy',  label: '🧀 Dairy',            at: [12, -10] },
+  { id: 'cheeseShelf', cost: 350, after: 'dairy',      unlock: 'shelf:cheese',   label: '🧀 Cheese Stand',     at: [9, 7.5] },
 ];
-export const START_UNLOCKED = ['field:wheat1', 'shelf:wheat', 'counter'];
+export const START_UNLOCKED = ['field:wheat1', 'shelf:wheat'];
 
 export const WORKER_LOOKS = {
   cashier: { shirt: '#4f7fb5', pants: '#2f3e57', hat: 'cap', hatColor: '#4f7fb5' },
@@ -81,6 +82,6 @@ export const playerCap = lv => 6 + 3 * lv;
 export const workerSpeed = lv => 3.4 + 0.6 * lv;
 export const workerCap = lv => 4 + 2 * lv;
 
-// Up to base + one per open stall are on the farm at once; patience is seconds at an empty stall.
-export const CUSTOMERS = { every: 3.6, base: 3, max: 10, patience: 35 };
+// Up to base + perStall per open stall are on the farm at once; patience is seconds at an empty stall.
+export const CUSTOMERS = { every: 1.8, base: 5, perStall: 2, max: 18, patience: 25 };
 export const TRUCK_AWAY = 20;

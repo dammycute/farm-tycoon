@@ -2,7 +2,7 @@
 
 A 3D idle-arcade farm game for the browser, built with [Three.js](https://threejs.org/).
 
-Walk your farmer around, harvest crops into a carry stack, feed animals, run the bakery and dairy, stock market stalls, serve customers at the till, fill truck orders, and pour coins into unlock zones to grow the farm. Hire a cashier and farmhands to automate it.
+Walk your farmer around, harvest crops into a carry stack, feed animals, run the bakery and dairy, and stock market stalls. Customers pay as they shop, leaving coins beside each stall. Fill truck orders, and pour coins into unlock zones to grow the farm. Hire farmhands and a coin collector to automate it.
 
 ## Play locally
 

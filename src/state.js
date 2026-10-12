@@ -13,7 +13,7 @@ export function newState() {
     pens: {},
     machines: {},
     shelves: {},
-    pile: 0,
+    stallCoins: {},
     stack: [],
     workers: [],
     truck: null,

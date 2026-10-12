@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import * as M from './models.js';
 import * as Sim from './sim.js';
 import {
-  FIELDS, PENS, MACHINES, SHELVES, COUNTER, COIN_PILE, ZONES, BOUNDS, ITEMS, CAPS, ROAD_Z,
-  WORKER_LOOKS, WORKER_HOME, PLAYER_START, CUSTOMERS, playerSpeed, workerSpeed,
+  FIELDS, PENS, MACHINES, SHELVES, STALL_COINS, BOUNDS, ITEMS, CAPS, ROAD_Z,
+  WORKER_LOOKS, WORKER_HOME, COLLECTOR_HOME, PLAYER_START, CUSTOMERS, playerSpeed, workerSpeed,
 } from './data.js';
 import { plotPos } from './world.js';
 
@@ -115,7 +115,6 @@ export class Player extends Carrier {
     this.pos.z = Math.max(BOUNDS.minZ, Math.min(BOUNDS.maxZ, this.pos.z));
 
     this.cool -= dt;
-    this.manning = false;
     this.interact(S, dt, fx);
 
     this.syncStack(S.stack, time);
@@ -127,7 +126,6 @@ export class Player extends Carrier {
 
   interact(S, dt, fx) {
     const pad = this.world.padAt(S, this.pos);
-    if (pad?.kind === 'register') this.manning = true;
     if (this.cool > 0) return;
 
     // Harvest any ripe plot you walk across.
@@ -155,13 +153,12 @@ export class Player extends Carrier {
     }
 
     if (!pad) return;
-    if (pad.kind === 'coins') {
-      if (S.pile <= 0) return;
-      const amt = Math.max(1, Math.ceil(S.pile / 12));
-      S.pile -= amt;
-      S.coins += amt;
-      this.cool = 0.04;
-      fx({ coin: true, from: V(...COIN_PILE).setY(0.3), to: this.pos.clone().setY(1.2), sound: 'coin', coins: amt });
+    if (pad.kind === 'cash') {
+      const amt = Sim.collectStall(S, pad.item);
+      if (amt) {
+        this.cool = 0.04;
+        fx({ coin: true, from: pad.pos.clone().setY(0.3), to: this.pos.clone().setY(1.2), sound: 'coin', coins: amt });
+      }
       return;
     }
     const ev = padAction(S, this.world, S, pad, this);
@@ -283,17 +280,39 @@ class Farmhand extends Carrier {
   }
 }
 
-class Cashier extends Carrier {
+// Walks between stalls picking up the coins customers leave, so you don't have to.
+class Collector extends Carrier {
   constructor(world, data) {
     super(world, WORKER_LOOKS[data.id]);
     this.data = data;
-    this.post = world.pad('register').pos.clone();
-    this.pos.copy(V(COUNTER[0] - 2.5, COUNTER[1] - 2));
+    this.home = V(...COLLECTOR_HOME);
+    this.pos.copy(this.home);
+    this.target = null;
   }
-  update(S, dt, time) {
-    const atPost = this.walkTo(this.post, workerSpeed(S.upgrades.workerSpeed), dt);
-    if (atPost) this.face(0, 1, dt);
-    this.manning = atPost;
+
+  update(S, dt, time, fx) {
+    this.cool -= dt;
+    if (!this.target || !(S.stallCoins[this.target.item] > 0)) {
+      // Head for the stall with the most coins, discounted by distance.
+      let best = null, bs = -Infinity;
+      for (const [item, n] of Object.entries(S.stallCoins)) {
+        if (n <= 0) continue;
+        const pad = this.world.pad('cash', item);
+        const score = n - pad.pos.distanceTo(this.pos) * 0.6;
+        if (score > bs) { bs = score; best = pad; }
+      }
+      this.target = best;
+    }
+    const goal = this.target ? this.target.pos : this.home;
+    const arrived = this.walkTo(goal, workerSpeed(S.upgrades.workerSpeed) * 1.2, dt);
+    if (this.target && arrived && this.cool <= 0) {
+      const amt = Sim.collectStall(S, this.target.item);
+      if (amt) {
+        this.cool = 0.06;
+        fx({ coin: true, from: this.target.pos.clone().setY(0.3), to: this.pos.clone().setY(1.2), quiet: true, coins: amt });
+      }
+    }
+    if (!this.target && arrived) this.face(0, 1, dt);
     this.animate(time, false);
   }
 }
@@ -332,59 +351,47 @@ class Customer extends Carrier {
     this.cool -= dt;
 
     if (this.state === 'toShelf') {
+      // Two customers can shop a stall side by side; the rest wait in pairs behind them.
       const line = crowd.filter(c => c.state === 'toShelf' && c.item === this.item);
       const k = line.indexOf(this);
       const [sx, sz] = SHELVES[this.item];
-      const spot = V(sx + (k % 2 ? 0.45 : -0.45) * Math.min(k, 1), sz + 1.25 + k * 0.8);
-      // First walk along the road, then step up to our place in the shelf's line (which moves up as it shortens).
+      const spot = V(sx + (k % 2 ? 0.45 : -0.45), sz + 1.25 + Math.floor(k / 2) * 0.8);
+      // First walk along the road, then step up to our place in line (which moves up as it shortens).
       const offRoad = this.pos.z < ROAD_Z;
       if ((!this.path.length || offRoad) && (!this.path.length || this.path[0].distanceTo(spot) > 0.1) && (this.pos.distanceTo(spot) > 0.06)) {
         this.path = [spot];
       }
-      if (k === 0 && !this.path.length) {
+      if (k < 2 && !this.path.length) {
         this.face(0, -1, dt);
-        if (this.cool <= 0 && Sim.buyFromShelf(S, this.item)) {
+        const paid = this.cool <= 0 && Sim.buyFromShelf(S, this.item);
+        if (paid) {
+          // Pay as we go: the coins drop beside the stall.
           this.got++;
           this.carry.push(this.item);
-          this.cool = 0.4;
+          this.cool = 0.35;
           this.waited = 0;
+          const cash = V(sx + STALL_COINS[0], sz + STALL_COINS[1]);
           fx({ item: this.item, from: V(sx, sz).setY(1), to: this.stackTop, quiet: true });
-          if (this.got >= this.qty) this.state = 'toQueue';
+          fx({ coin: true, from: this.pos.clone().setY(1.1), to: cash.setY(0.3), sound: 'cash', paid, at: this.pos.clone().setY(2.3) });
+          if (this.got >= this.qty) this.leave();
         } else if ((this.waited = (this.waited || 0) + dt) > CUSTOMERS.patience) {
-          // Gave up waiting: pay for what we have, or leave unhappy.
-          if (this.got) this.state = 'toQueue';
-          else { this.state = 'leave'; this.sad = true; this.path = [V(this.pos.x, ROAD_Z + 0.4), V(30, ROAD_Z + 0.4)]; }
-        }
-      }
-    } else if (this.state === 'toQueue') {
-      const queue = crowd.filter(c => c.state === 'toQueue');
-      const k = queue.indexOf(this);
-      const spot = k < 4
-        ? V(COUNTER[0], COUNTER[1] + 1.3 + k * 0.85)
-        : V(COUNTER[0] - 0.9 * (k - 3), COUNTER[1] + 1.3 + 3 * 0.85);
-      if (this.pos.distanceTo(spot) > 0.06 && (!this.path.length || this.path[0].distanceTo(spot) > 0.1)) this.path = [spot];
-      if (k === 0 && !this.path.length) {
-        this.face(0, -1, dt);
-        if (crowd.manned) {
-          this.payT = (this.payT || 0) + dt;
-          if (this.payT > 0.55) {
-            const total = Sim.priceOf(S, this.item) * this.got;
-            S.pile += total;
-            fx({ coin: true, from: this.pos.clone().setY(1.2), to: V(...COIN_PILE).setY(0.3), sound: 'cash', paid: total, at: this.pos.clone().setY(2.2) });
-            this.state = 'leave';
-            this.path = [V(this.pos.x + 1.5, ROAD_Z + 0.4), V(30, ROAD_Z + 0.4)];
-          }
+          this.sad = !this.got;
+          this.leave();
         }
       }
     }
 
     this.syncStack(this.carry, time);
     this.animate(time, this.carry.length > 0);
-    const label = this.state === 'toShelf' ? `${ITEMS[this.item].emoji} ${this.got}/${this.qty}`
-      : this.state === 'toQueue' ? '💵' : this.sad ? '😞' : '😊';
+    const label = this.state === 'toShelf' ? `${ITEMS[this.item].emoji} ${this.got}/${this.qty}` : this.sad ? '😞' : '😊';
     M.setLabel(this.bubble, label);
     this.bubble.position.copy(this.pos).setY(1.9 + this.carry.length * M.ITEM_H * 0.3);
     return this.state === 'leave' && !this.path.length;
+  }
+
+  leave() {
+    this.state = 'leave';
+    this.path = [V(this.pos.x, ROAD_Z + 0.4), V(this.side * 30, ROAD_Z + 0.4)];
   }
 
   dispose() {
@@ -409,7 +416,7 @@ export class Agents {
     const S = this.getState();
     for (const w of S.workers) {
       if (this.workers.some(a => a.data === w)) continue;
-      const A = w.kind === 'cashier' ? new Cashier(this.world, w) : new Farmhand(this.world, w, this.workers.length);
+      const A = w.kind === 'collector' ? new Collector(this.world, w) : new Farmhand(this.world, w, this.workers.length);
       this.workers.push(A);
     }
 
@@ -419,26 +426,25 @@ export class Agents {
     for (const w of this.workers) w.update(S, dt, time, this.fx, this.workers);
 
     // Customers
-    const shelves = Object.keys(S.shelves);
+    const shelves = Sim.available(S);
     this.spawnT -= dt;
     const active = this.customers.filter(c => c.state !== 'leave').length;
-    if (this.spawnT <= 0 && active < Math.min(CUSTOMERS.max, CUSTOMERS.base + shelves.length) && shelves.length) {
-      const every = Math.max(1.4, CUSTOMERS.every - 0.35 * shelves.length);
-      this.spawnT = every * (0.7 + this.rand() * 0.6);
-      const item = shelves[Math.floor(this.rand() * shelves.length)];
+    const room = Math.min(CUSTOMERS.max, CUSTOMERS.base + CUSTOMERS.perStall * shelves.length);
+    if (this.spawnT <= 0 && active < room && shelves.length) {
+      const every = Math.max(0.7, CUSTOMERS.every - 0.15 * shelves.length);
+      this.spawnT = every * (0.6 + this.rand() * 0.8);
+      // Stalls that have stock attract more shoppers.
+      const stocked = shelves.filter(k => S.shelves[k] > 0);
+      const pool = stocked.length && this.rand() < 0.75 ? stocked : shelves;
+      const item = pool[Math.floor(this.rand() * pool.length)];
       const qty = 1 + Math.floor(this.rand() * (ITEMS[item].price <= 4 ? 4 : 3));
       this.customers.push(new Customer(this.world, item, qty, this.rand));
     }
     const crowd = this.customers;
-    crowd.manned = this.player.manning || this.workers.some(w => w.manning);
     this.customers = crowd.filter(c => {
       const gone = c.update(S, dt, time, crowd, this.fx);
       if (gone) c.dispose();
       return !gone;
     });
-  }
-
-  get waitingToPay() {
-    return this.customers.filter(c => c.state === 'toQueue').length;
   }
 }

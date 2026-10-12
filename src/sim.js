@@ -14,14 +14,28 @@ export const hasRoom = (S, owner) => owner.stack.length < capOf(S, owner);
 
 // Create runtime records for everything that is unlocked.
 export function ensure(S) {
+  // Older saves had a single coin pile at a till; bank it.
+  if (S.pile) S.coins += S.pile;
+  delete S.pile;
+  S.stallCoins ||= {};
+  for (const w of S.workers) if (w.kind === 'cashier') w.kind = 'collector';
+  // Drop stall records for stalls that aren't actually unlocked (or got corrupted).
+  for (const rec of [S.shelves, S.stallCoins]) {
+    for (const k of Object.keys(rec)) {
+      if (!isUnlocked(S, `shelf:${k}`)) delete rec[k];
+      else if (!Number.isFinite(rec[k])) rec[k] = 0;
+    }
+  }
+  if (S.truck?.order && Object.keys(S.truck.order).some(k => !isUnlocked(S, `shelf:${k}`))) S.truck.order = null;
+
   for (const key of S.unlocked) {
     const [kind, id] = key.split(':');
     if (kind === 'field') S.plots[id] ||= Array(plotCount()).fill(0);
     if (kind === 'pen') S.pens[id] ||= { feed: 0, out: 0, progress: 0 };
     if (kind === 'machine') S.machines[id] ||= { in: 0, out: 0, progress: 0 };
-    if (kind === 'shelf') S.shelves[id] ??= 0;
+    if (kind === 'shelf') { S.shelves[id] ??= 0; S.stallCoins[id] ??= 0; }
     if (kind === 'hire' && !S.workers.some(w => w.id === id)) {
-      S.workers.push({ id, kind: id === 'cashier' ? 'cashier' : 'farmhand', stack: [] });
+      S.workers.push({ id, kind: id === 'cashier' ? 'collector' : 'farmhand', stack: [] });
     }
     if (kind === 'truck' && !S.truck) S.truck = { order: null, loaded: {}, awayUntil: 0 };
   }
@@ -118,10 +132,23 @@ export function stockShelf(S, owner, item) {
   return item;
 }
 
+// A customer takes one item and drops its price in coins beside the stall. Returns the price, or 0.
 export function buyFromShelf(S, item) {
-  if (S.shelves[item] <= 0) return false;
+  if (!(S.shelves[item] > 0)) return 0;
   S.shelves[item]--;
-  return true;
+  const price = priceOf(S, item);
+  S.stallCoins[item] += price;
+  return price;
+}
+
+// Pick up part of a stall's coin pile (big piles empty in a few grabs). Returns coins taken.
+export function collectStall(S, item) {
+  const n = S.stallCoins[item] || 0;
+  if (n <= 0) return 0;
+  const amt = Math.max(1, Math.ceil(n / 8));
+  S.stallCoins[item] -= amt;
+  S.coins += amt;
+  return amt;
 }
 
 export function truckNeeds(S, item) {
@@ -149,7 +176,7 @@ export function loadTruck(S, owner) {
 
 // Items the farm can currently produce (used for customers and truck orders).
 export function available(S) {
-  return Object.keys(S.shelves);
+  return Object.keys(S.shelves).filter(k => isUnlocked(S, `shelf:${k}`));
 }
 
 function newTruckOrder(S) {

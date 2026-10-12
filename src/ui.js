@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ITEMS, ZONES, UPGRADES, COIN_PILE, playerCap } from './data.js';
+import { ZONES, UPGRADES, playerCap } from './data.js';
 import { load, save, wipe, newState } from './state.js';
 import * as Sim from './sim.js';
 import { World, plotPos } from './world.js';
@@ -39,7 +39,7 @@ const sfx = {
   drop: throttled(() => tone(480 + Math.random() * 80, 0.06)),
   pay: throttled(() => tone(1100, 0.03, 'sine', 0, 0.03)),
   coin: throttled(() => tone(1300 + Math.random() * 200, 0.05, 'sine', 0, 0.04)),
-  cash: () => { tone(1320, 0.08, 'square', 0, 0.025); tone(1760, 0.12, 'square', 0.08, 0.025); },
+  cash: throttled(() => { tone(1320, 0.06, 'square', 0, 0.018); tone(1760, 0.08, 'square', 0.06, 0.018); }),
   unlock: () => [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, 0.22, 'triangle', i * 0.09, 0.06)),
   truck: () => [392, 523, 659, 784].forEach((f, i) => tone(f, 0.18, 'triangle', i * 0.08, 0.06)),
   err: () => tone(180, 0.15, 'square', 0, 0.03),
@@ -88,8 +88,7 @@ function fx(ev) {
   if (ev.coins) pulse(el.coinStat);
   if (ev.paid) {
     const p = world.screenPos(ev.at);
-    float(p.x, p.y, `+${ev.paid} 🪙`);
-    sfx.cash();
+    float(p.x, p.y, `+${ev.paid} 🪙`, 'small');
   }
   if (ev.truckReward) {
     const p = world.screenPos(world.truck.position.clone().setY(3));
@@ -153,7 +152,9 @@ function guide() {
   const p = agents.player.pos;
   let target = null;
   const affordable = ZONES.filter(z => Sim.zoneVisible(S, z) && S.coins >= z.cost - (S.zonePaid[z.id] || 0));
-  if (S.pile >= 5 || (done < 3 && S.pile > 0)) target = new THREE.Vector3(COIN_PILE[0], 0, COIN_PILE[1]);
+  const collector = S.workers.some(w => w.kind === 'collector');
+  const [richest, coins] = Object.entries(S.stallCoins).sort((a, b) => b[1] - a[1])[0] || [];
+  if (!collector && coins && (coins >= 10 || (done < 3 && coins > 0))) target = world.pad('cash', richest).pos;
   else if (affordable.length) target = new THREE.Vector3(affordable[0].at[0], 0, affordable[0].at[1]);
   else if (done < 4) {
     if (S.stack.length) {
@@ -174,7 +175,6 @@ function guide() {
       }
       if (target && bd < 4) target = null;
     }
-    if (!target && agents.waitingToPay && !agents.workers.some(w => w.manning)) target = world.pad('register').pos;
   }
   world.arrow.visible = !!target && target.distanceTo(p) > 1.2;
   if (target) { world.arrow.position.x = target.x; world.arrow.position.z = target.z; }

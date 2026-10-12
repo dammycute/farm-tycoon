@@ -314,19 +314,6 @@ export function makeShelf(item) {
   return g;
 }
 
-export function makeCounter() {
-  const g = new THREE.Group();
-  g.add(box(2.4, 0.9, 1, '#8e5a35', { y: 0.45 }));
-  g.add(box(2.5, 0.1, 1.1, '#d9a066', { y: 0.95 }));
-  g.add(box(0.6, 0.35, 0.45, '#5f6b73', { x: 0.5, y: 1.17 }));
-  g.add(box(0.5, 0.2, 0.05, '#9fd3ff', { x: 0.5, y: 1.3, z: 0.2, rx: -0.4 }));
-  const sign = sprite(emojiTexture('💰'), 0.7);
-  sign.center.set(0.5, 0.5);
-  sign.position.set(-0.6, 1.6, 0);
-  g.add(sign);
-  return g;
-}
-
 export function makeTrough() {
   const g = new THREE.Group();
   g.add(box(1.4, 0.35, 0.6, '#8a5a35', { y: 0.18 }));

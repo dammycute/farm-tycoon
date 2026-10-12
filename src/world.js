@@ -1,7 +1,7 @@
 // The 3D farm: scene, follow camera, stations built from data, per-frame visual sync and flying-item effects.
 import * as THREE from 'three';
 import {
-  FIELDS, FIELD_GRID, PENS, MACHINES, SHELVES, COUNTER, COIN_PILE, TRUCK, ROAD_Z, ZONES, CAPS, ITEMS, TRUCK_AWAY,
+  FIELDS, FIELD_GRID, PENS, MACHINES, SHELVES, STALL_COINS, TRUCK, ROAD_Z, ZONES, CAPS, ITEMS,
 } from './data.js';
 import * as M from './models.js';
 import * as Sim from './sim.js';
@@ -28,9 +28,8 @@ function buildPads() {
   }
   for (const [item, [x, z]] of Object.entries(SHELVES)) {
     pads.push({ kind: 'shelf', id: item, key: `shelf:${item}`, item, pos: V(x, z - 1.35), emoji: '' });
+    pads.push({ kind: 'cash', id: item, key: `shelf:${item}`, item, pos: V(x + STALL_COINS[0], z + STALL_COINS[1]), emoji: '', size: 1.3 });
   }
-  pads.push({ kind: 'register', key: 'counter', pos: V(COUNTER[0], COUNTER[1] - 1.3), emoji: '🧑‍💼' });
-  pads.push({ kind: 'coins', key: 'counter', pos: V(COIN_PILE[0], COIN_PILE[1]), emoji: '', size: 2 });
   pads.push({ kind: 'truck', key: 'truck', pos: V(TRUCK[0], TRUCK[1] - 2.3), emoji: '📦' });
   return pads;
 }
@@ -224,21 +223,16 @@ export class World {
     }
 
     this.shelves = {};
+    this.stallCoins = {};
     for (const [item, [x, z]] of Object.entries(SHELVES)) {
       const g = M.makeShelf(item);
       g.position.set(x, 0, z);
-      const pile = new Pile(g, () => M.makeItem(item), { cols: 3, rows: 2, dx: 0.5, dz: 0.4, max: CAPS.shelf, origin: V(0, 0.08 + 0.72, -0.05) });
+      const pile = new Pile(g, () => M.makeItem(item), { cols: 3, rows: 2, dx: 0.5, dz: 0.4, max: CAPS.shelf, origin: V(0, -0.05, 0.08 + 0.72) });
+      // Coins customers leave beside the stall.
+      this.stallCoins[item] = new Pile(g, M.makeCoin, { cols: 3, rows: 3, dx: 0.34, dz: 0.34, dy: 0.065, max: 54, origin: V(STALL_COINS[0], STALL_COINS[1], 0.04) });
       this.addEntity(`shelf:${item}`, g, { minX: x - 1, maxX: x + 1, minZ: z - 0.6, maxZ: z + 0.6 });
       this.shelves[item] = pile;
     }
-
-    const counter = M.makeCounter();
-    counter.position.set(COUNTER[0], 0, COUNTER[1]);
-    this.addEntity('counter', counter, { minX: COUNTER[0] - 1.3, maxX: COUNTER[0] + 1.3, minZ: COUNTER[1] - 0.6, maxZ: COUNTER[1] + 0.6 });
-    const coins = new THREE.Group();
-    coins.position.set(COIN_PILE[0], 0, COIN_PILE[1]);
-    this.scene.add(coins);
-    this.coinPile = new Pile(coins, M.makeCoin, { cols: 4, rows: 4, dx: 0.36, dz: 0.36, dy: 0.065, max: 96, origin: V(0, 0, 0.04) });
 
     const truck = M.makeTruck();
     truck.position.set(TRUCK[0], 0, TRUCK[1]);
@@ -273,7 +267,7 @@ export class World {
 
   // ---------- queries ----------
   activePads(S) {
-    return this.pads.filter(p => Sim.isUnlocked(S, p.key) || p.key === 'counter');
+    return this.pads.filter(p => Sim.isUnlocked(S, p.key));
   }
 
   padAt(S, pos) {
@@ -291,7 +285,7 @@ export class World {
   activeObstacles(S) {
     const list = [...this.staticObstacles];
     for (const [key, e] of Object.entries(this.ent)) {
-      if (e.obstacle && (key === 'counter' || Sim.isUnlocked(S, key))) list.push(e.obstacle);
+      if (e.obstacle && Sim.isUnlocked(S, key)) list.push(e.obstacle);
     }
     return list;
   }
@@ -359,7 +353,7 @@ export class World {
     const now = Date.now();
 
     for (const [key, e] of Object.entries(this.ent)) {
-      const on = key === 'counter' || Sim.isUnlocked(S, key);
+      const on = Sim.isUnlocked(S, key);
       e.group.visible = on;
       if (on && !this.seen.has(key)) {
         this.seen.add(key);
@@ -367,7 +361,7 @@ export class World {
       }
     }
     this.started = true;
-    for (const pad of this.pads) pad.mesh.visible = pad.key === 'counter' || Sim.isUnlocked(S, pad.key);
+    for (const pad of this.pads) pad.mesh.visible = Sim.isUnlocked(S, pad.key);
     if (S.truck && !S.truck.order) this.pad('truck').mesh.visible = false;
 
     // Crops
@@ -412,7 +406,8 @@ export class World {
     }
 
     for (const [item, pile] of Object.entries(this.shelves)) pile.set(S.shelves[item] || 0);
-    this.coinPile.set(Math.min(S.pile, 96));
+    for (const [item, pile] of Object.entries(this.stallCoins)) pile.set(Math.min(S.stallCoins[item] || 0, 54));
+    for (const pad of this.pads) if (pad.kind === 'cash') pad.mesh.visible &&= (S.stallCoins[pad.item] || 0) > 0;
 
     // Truck: drives in when an order appears, drives off along the road when filled.
     if (S.truck) {

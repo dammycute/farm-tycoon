@@ -118,6 +118,7 @@ h2 { margin: 0 0 12px; font-weight: 600; font-size: 22px; }
   animation: rise 1.2s ease-out both;
 }
 .float.big { font-size: 30px; color: #ffe066; }
+.float.small { font-size: 15px; color: #ffe066; }
 .confetti { position: fixed; top: -40px; z-index: 65; pointer-events: none; animation: fall 2s ease-in forwards; }
 
 @keyframes rise {
