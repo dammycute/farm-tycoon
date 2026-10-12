@@ -26,8 +26,8 @@ export const PENS = {
 
 // Machines turn `need` inputs into one output.
 export const MACHINES = {
-  bakery: { name: 'Bakery', input: 'wheat', need: 2, output: 'bread',  time: 4, pos: [2, -10],  look: { wall: '#f8d9a8', roofColor: '#b5482f', sign: '🍞' } },
-  dairy:  { name: 'Dairy',  input: 'milk',  need: 2, output: 'cheese', time: 5, pos: [12, -10], look: { wall: '#dfeaf3', roofColor: '#4f7fb5', sign: '🧀' } },
+  bakery: { name: 'Bakery', input: 'wheat', need: 2, output: 'bread',  time: 2, pos: [2, -10],  look: { wall: '#f8d9a8', roofColor: '#b5482f', sign: '🍞' } },
+  dairy:  { name: 'Dairy',  input: 'milk',  need: 2, output: 'cheese', time: 2.5, pos: [12, -10], look: { wall: '#dfeaf3', roofColor: '#4f7fb5', sign: '🧀' } },
 };
 
 export const SHELVES = { wheat: [-6, 7.5], egg: [-3, 7.5], corn: [0, 7.5], milk: [3, 7.5], bread: [6, 7.5], cheese: [9, 7.5] };
@@ -40,23 +40,25 @@ export const PLAYER_START = [0, 3];
 export const WORKER_HOME = [-3, 3.5];
 export const BOUNDS = { minX: -19.5, maxX: 19.5, minZ: -14, maxZ: 11.2 };
 
-export const CAPS = { shelf: 12, feed: 10, tray: 12, machineIn: 12, machineOut: 10 };
+export const CAPS = { shelf: 12, feed: 10, tray: 12, machineIn: 20, machineOut: 16 };
 
 // Unlock zones: stand on one to pour coins in. A zone appears once the zone in `after` is done.
 export const ZONES = [
   { id: 'coop',        cost: 30,  after: null,         unlock: 'pen:coop',       label: '🐔 Chicken Coop',     at: [4, -1] },
   { id: 'eggShelf',    cost: 20,  after: 'coop',       unlock: 'shelf:egg',      label: '🥚 Egg Stand',        at: [-3, 7.5] },
   { id: 'truck',       cost: 50,  after: 'coop',       unlock: 'truck',          label: '🚚 Order Truck',      at: [-14, 9.4] },
-  { id: 'hand1',       cost: 80,  after: 'eggShelf',   unlock: 'hire:hand1',     label: '👷 Hire Farmhand',    at: [-3, 3.5] },
+  { id: 'loader1',     cost: 100, after: 'truck',      unlock: 'hire:loader1',   label: '🚚 Hire Truck Loader', at: [-10.5, 9.6] },
+  { id: 'hand1',       cost: 80,  after: 'eggShelf',   unlock: 'hire:hand1',     label: '🌾 Hire Harvester',   at: [-3, 3.5] },
   { id: 'wheat2',      cost: 60,  after: 'eggShelf',   unlock: 'field:wheat2',   label: '🌾 Wheat Field',      at: [-8, -7] },
   { id: 'cashier',     cost: 120, after: 'hand1',      unlock: 'hire:cashier',   label: '💰 Hire Coin Collector', at: [12, 4.6] },
   { id: 'corn1',       cost: 150, after: 'truck',      unlock: 'field:corn1',    label: '🌽 Corn Field',       at: [-15, 0] },
   { id: 'cornShelf',   cost: 80,  after: 'corn1',      unlock: 'shelf:corn',     label: '🌽 Corn Stand',       at: [0, 7.5] },
   { id: 'cowpen',      cost: 250, after: 'corn1',      unlock: 'pen:cowpen',     label: '🐄 Cow Pasture',      at: [13, -1] },
   { id: 'milkShelf',   cost: 120, after: 'cowpen',     unlock: 'shelf:milk',     label: '🥛 Milk Stand',       at: [3, 7.5] },
-  { id: 'hand2',       cost: 300, after: 'cashier',    unlock: 'hire:hand2',     label: '🧑‍🌾 Hire Animal Keeper', at: [-3, 0.5] },
+  { id: 'hand2',       cost: 300, after: 'cashier',    unlock: 'hire:hand2',     label: '🐔 Hire Animal Keeper', at: [9.2, 3.9] },
   { id: 'corn2',       cost: 300, after: 'cowpen',     unlock: 'field:corn2',    label: '🌽 Corn Field',       at: [-15, -7] },
   { id: 'bakery',      cost: 400, after: 'milkShelf',  unlock: 'machine:bakery', label: '🥖 Bakery',           at: [2, -10] },
+  { id: 'factory1',    cost: 250, after: 'bakery',     unlock: 'hire:factory1',  label: '🏭 Hire Factory Worker', at: [6.2, -6.8] },
   { id: 'breadShelf',  cost: 200, after: 'bakery',     unlock: 'shelf:bread',    label: '🍞 Bread Stand',      at: [6, 7.5] },
   { id: 'dairy',       cost: 700, after: 'breadShelf', unlock: 'machine:dairy',  label: '🧀 Dairy',            at: [12, -10] },
   { id: 'cheeseShelf', cost: 350, after: 'dairy',      unlock: 'shelf:cheese',   label: '🧀 Cheese Stand',     at: [9, 7.5] },
@@ -65,26 +67,28 @@ export const START_UNLOCKED = ['field:wheat1', 'shelf:wheat'];
 
 // Repeatable buy spots: each time one fills you get one more, and the next costs more (up to max).
 export const BUYS = [
-  { id: 'hand',   label: '👷 Hire Worker', needs: 'hire:hand1', base: 150, growth: 1.7,  max: 6, at: [-1.2, 4.2] },
+  { id: 'harvester', role: 'harvester', label: '🌾 Hire Harvester',      needs: 'hire:hand1',    base: 150, growth: 1.7, max: 4, at: [-3, 3.5] },
+  { id: 'keeper',    role: 'keeper',    label: '🐔 Hire Animal Keeper',  needs: 'hire:hand2',    base: 200, growth: 1.7, max: 3, at: [9.2, 3.9] },
+  { id: 'loader',    role: 'loader',    label: '🚚 Hire Truck Loader',   needs: 'hire:loader1',  base: 180, growth: 1.7, max: 3, at: [-10.5, 9.6] },
+  { id: 'factory',   role: 'factory',   label: '🏭 Hire Factory Worker', needs: 'hire:factory1', base: 300, growth: 1.7, max: 3, at: [6.2, -6.8] },
+  { id: 'collector', role: 'collector', label: '💰 Hire Coin Collector', needs: 'hire:cashier',  base: 250, growth: 1.8, max: 2, at: [12, 4.6] },
   { id: 'coop',   label: '🐔 +1 Chicken',  needs: 'pen:coop',   base: 40,  growth: 1.45, max: 8, at: [8.5, -1.5] },
   { id: 'cowpen', label: '🐄 +1 Cow',      needs: 'pen:cowpen', base: 120, growth: 1.5,  max: 5, at: [17.4, -1] },
 ];
 export const buyCost = (b, n) => Math.round(b.base * b.growth ** n);
 
-export const WORKER_LOOKS = {
-  cashier: { shirt: '#4f7fb5', pants: '#2f3e57', hat: 'cap', hatColor: '#4f7fb5' },
-  hand1:   { shirt: '#5aa04a', pants: '#6b5a3a', hat: 'cap', hatColor: '#f4b400' },
-  hand2:   { shirt: '#e08a2c', pants: '#6b5a3a', hat: 'cap', hatColor: '#c0533a' },
+// Each worker has one job, a uniform and an icon over their head.
+// harvester: crops → stalls, troughs, bakery · keeper: eggs/milk → stalls, dairy
+// factory: bread/cheese → stalls · loader: anything the truck wants → truck · collector: stall coins
+export const ROLES = {
+  harvester: { name: 'Harvester',      icon: '🌾', look: { shirt: '#5aa04a', pants: '#6b5a3a', hat: 'straw', hatColor: '#e6c86e' } },
+  keeper:    { name: 'Animal Keeper',  icon: '🐔', look: { shirt: '#e08a2c', pants: '#5a4632', hat: 'cap', hatColor: '#c0533a' } },
+  factory:   { name: 'Factory Worker', icon: '🏭', look: { shirt: '#8e6cc4', pants: '#3f3a4a', hat: 'cap', hatColor: '#ffffff' } },
+  loader:    { name: 'Truck Loader',   icon: '🚚', look: { shirt: '#3d7fd9', pants: '#2f3e57', hat: 'cap', hatColor: '#ffd23f' } },
+  collector: { name: 'Coin Collector', icon: '💰', look: { shirt: '#2f3e57', pants: '#2f2a26', hat: 'cap', hatColor: '#f4b400' } },
 };
-// Looks for workers hired from the "Hire Worker" spot, used in turn.
-export const EXTRA_LOOKS = [
-  { shirt: '#8e6cc4', pants: '#4a3f5a', hat: 'cap', hatColor: '#ffd23f' },
-  { shirt: '#3fa7a0', pants: '#2f4a48', hat: 'straw', hatColor: '#e6c86e' },
-  { shirt: '#d9534f', pants: '#5a4632', hat: 'cap', hatColor: '#4f7fb5' },
-  { shirt: '#f2c14e', pants: '#3f4a5a', hat: 'cap', hatColor: '#5aa04a' },
-  { shirt: '#6d8fd6', pants: '#3a3a3a', hat: 'straw', hatColor: '#e6c86e' },
-  { shirt: '#c96fa0', pants: '#4a3f5a', hat: 'cap', hatColor: '#e08a2c' },
-];
+// What the first hire from each zone becomes.
+export const HIRE_ROLES = { hand1: 'harvester', hand2: 'keeper', loader1: 'loader', factory1: 'factory', cashier: 'collector' };
 
 export const UPGRADES = {
   speed:       { name: 'Farmer speed',    icon: '👟', max: 6, cost: lv => Math.round(40 * 1.9 ** lv) },
@@ -93,6 +97,7 @@ export const UPGRADES = {
   price:       { name: 'Better prices',   icon: '🏷️', max: 5, cost: lv => Math.round(120 * 2 ** lv) },
   workerSpeed: { name: 'Worker speed',    icon: '🏃', max: 5, cost: lv => Math.round(150 * 1.9 ** lv), needsWorker: true },
   workerCap:   { name: 'Worker basket',   icon: '🧺', max: 5, cost: lv => Math.round(150 * 1.8 ** lv), needsWorker: true },
+  factory:     { name: 'Factory speed',   icon: '⚙️', max: 5, cost: lv => Math.round(200 * 1.9 ** lv), needs: 'machine:bakery' },
 };
 export const playerSpeed = lv => 5 + 0.7 * lv;
 export const playerCap = lv => 6 + 3 * lv;
