@@ -4,7 +4,7 @@ import * as M from './models.js';
 import * as Sim from './sim.js';
 import {
   FIELDS, PENS, MACHINES, SHELVES, STALL_COINS, BOUNDS, ITEMS, CAPS, ROAD_Z,
-  WORKER_LOOKS, EXTRA_LOOKS, WORKER_HOME, COLLECTOR_HOME, PLAYER_START, CUSTOMERS, playerSpeed, workerSpeed, buyCost,
+  ROLES, COLLECTOR_HOME, PLAYER_START, CUSTOMERS, playerSpeed, workerSpeed, buyCost,
 } from './data.js';
 import { plotPos } from './world.js';
 
@@ -180,71 +180,94 @@ export class Player extends Carrier {
 }
 
 // ---------- workers ----------
-// Where an item can go right now, nearest first.
-function destinations(S, world, item) {
+// Each worker has one role (see ROLES in data.js). This is where a role may drop an item off.
+function destinations(S, world, item, role) {
   const out = [];
+  if (role === 'loader' && Sim.truckNeeds(S, item)) return [world.pad('truck')];
   if ((S.shelves[item] ?? CAPS.shelf) < CAPS.shelf) out.push(world.pad('shelf', item));
-  for (const [id, p] of Object.entries(S.pens)) if (PENS[id].feed === item && p.feed < CAPS.feed) out.push(world.pad('penIn', id));
-  for (const [id, m] of Object.entries(S.machines)) if (MACHINES[id].input === item && m.in < CAPS.machineIn) out.push(world.pad('machIn', id));
-  if (Sim.truckNeeds(S, item)) out.push(world.pad('truck'));
+  if (role === 'loader') return out; // only falls back to a stall if the truck no longer wants it
+  if (role === 'harvester') {
+    for (const [id, p] of Object.entries(S.pens)) if (PENS[id].feed === item && p.feed < CAPS.feed) out.push(world.pad('penIn', id));
+  }
+  if (role === 'harvester' || role === 'keeper') {
+    for (const [id, m] of Object.entries(S.machines)) if (MACHINES[id].input === item && m.in < CAPS.machineIn) out.push(world.pad('machIn', id));
+  }
   return out;
 }
 
 // How badly a drop-off spot needs goods: multiplies the (squared) distance, so lower wins.
-// Empty troughs come first so animals never sit idle, then stalls with customers waiting.
-function urgency(S, pad, demand, keeper) {
+// Empty troughs come first so animals never sit idle, then idle machines, then stalls with customers waiting.
+function urgency(S, pad, demand) {
   switch (pad.kind) {
     case 'penIn': {
       const f = S.pens[pad.id].feed;
-      return (f === 0 ? 0.03 : f < 4 ? 0.25 : 1) * (keeper ? 0.3 : 1);
+      return f === 0 ? 0.03 : f < 4 ? 0.25 : 1;
     }
     case 'machIn': {
       const m = S.machines[pad.id];
-      return (m.in < MACHINES[pad.id].need ? 0.12 : m.in < 6 ? 0.5 : 1) * (keeper ? 0.3 : 1);
+      return m.in < MACHINES[pad.id].need ? 0.08 : m.in < 8 ? 0.4 : 1;
     }
     case 'shelf': return demand.has(pad.item) ? 0.1 : S.shelves[pad.item] < 3 ? 0.4 : 1;
-    default: return 0.7;
+    default: return 0.5;
   }
+}
+
+// How many more of an item the truck still needs, after what loaders are already carrying.
+function truckShort(S, item, crew) {
+  const tr = S.truck;
+  if (!tr?.order?.[item]) return 0;
+  const carried = crew.filter(w => w.role === 'loader').reduce((n, w) => n + w.data.stack.filter(i => i === item).length, 0);
+  return tr.order[item] - (tr.loaded[item] || 0) - carried;
+}
+
+// Where each role idles: next to the spot where it was hired.
+const ROLE_HOME = { harvester: [-3, 3.5], keeper: [9.2, 3.9], loader: [-10.5, 9.6], factory: [6.2, -6.8], collector: COLLECTOR_HOME };
+const roleHome = (role, i) => V(ROLE_HOME[role][0] + ((i % 3) - 1) * 1.1, ROLE_HOME[role][1] + Math.floor(i / 3) * 1.1);
+
+function addBadge(worker, role) {
+  const badge = M.sprite(M.emojiTexture(ROLES[role].icon), 0.42, 1, { depthTest: false });
+  badge.renderOrder = 6;
+  badge.position.y = 1.85;
+  worker.obj.add(badge);
 }
 
 class Farmhand extends Carrier {
   constructor(world, data, i) {
-    const num = Number(data.id.replace('hand', '')) || 1;
-    super(world, WORKER_LOOKS[data.id] || EXTRA_LOOKS[(num - 3) % EXTRA_LOOKS.length]);
+    super(world, ROLES[data.role].look);
     this.data = data;
-    // Every second farmhand is an animal keeper: prefers troughs, trays and machines.
-    this.keeper = num % 2 === 0;
-    this.home = V(WORKER_HOME[0] + (i % 4) * 1.2, WORKER_HOME[1] - Math.floor(i / 4) * 1.2);
+    this.role = data.role;
+    this.home = roleHome(this.role, i);
     this.pos.copy(this.home);
     this.mode = 'gather';
     this.target = null;
+    addBadge(this, this.role);
   }
 
-  update(S, dt, time, fx, others) {
+  update(S, dt, time, fx, crew) {
     const speed = workerSpeed(S.upgrades.workerSpeed);
     const cap = Sim.capOf(S, this.data);
     this.cool -= dt;
 
-    if (!this.target) this.plan(S, cap, others);
+    if (!this.target) this.plan(S, cap, crew);
     if (this.target) {
       const arrived = this.walkTo(this.target.pos, speed, dt);
-      if (arrived && this.cool <= 0) this.work(S, cap, fx, others);
-    } else {
-      this.walkTo(this.home, speed, dt);
+      if (arrived && this.cool <= 0) this.work(S, cap, fx, crew);
+    } else if (this.walkTo(this.home, speed, dt)) {
+      this.face(0, 1, dt);
     }
     this.syncStack(this.data.stack, time);
     this.animate(time, this.data.stack.length > 0);
   }
 
-  plan(S, cap, others) {
+  plan(S, cap, crew) {
     const stack = this.data.stack;
+    const demand = crew.demand || new Set();
     if (stack.length && (stack.length >= cap || this.mode === 'deliver')) {
       this.mode = 'deliver';
       let best = null, bd = Infinity;
-      const demand = others.demand || new Set();
       for (const item of new Set(stack)) {
-        for (const pad of destinations(S, this.world, item)) {
-          const d = pad.pos.distanceToSquared(this.pos) * urgency(S, pad, demand, this.keeper);
+        for (const pad of destinations(S, this.world, item, this.role)) {
+          const d = pad.pos.distanceToSquared(this.pos) * urgency(S, pad, demand);
           if (d < bd) { bd = d; best = { kind: 'pad', pad, pos: pad.pos.clone() }; }
         }
       }
@@ -252,44 +275,61 @@ class Farmhand extends Carrier {
       return;
     }
     this.mode = 'gather';
-    const taken = new Set(others.filter(o => o !== this && o.target?.key).map(o => o.target.key));
-    const demand = others.demand || new Set();
+    const taken = new Set(crew.filter(o => o !== this && o.target?.key).map(o => o.target.key));
     let best = null, bd = Infinity;
     // Nearest source wins, but anything customers are waiting for counts as much closer.
     const consider = (key, pos, t, item, boost = 1) => {
       if (taken.has(key)) return;
       const d = pos.distanceToSquared(this.pos) * (demand.has(item) ? 0.1 : 1) * boost;
-      if (d < bd) { bd = d; best = { ...t, key, pos }; }
+      if (d < bd) { bd = d; best = { ...t, key, pos, item }; }
     };
-    for (const id of Object.keys(S.plots)) {
-      const crop = FIELDS[id].crop;
-      if (!destinations(S, this.world, crop).length) continue;
-      for (let i = 0; i < Sim.plotCount(); i++) {
-        if (Sim.isRipe(S, id, i)) consider(`plot:${id}:${i}`, plotPos(id, i), { kind: 'plot', id, i }, crop);
+    // Loaders only fetch what the truck still needs; everyone else needs somewhere to take it.
+    const loader = this.role === 'loader';
+    const wanted = item => (loader ? truckShort(S, item, crew) > 0 : destinations(S, this.world, item, this.role).length > 0);
+
+    if (this.role === 'harvester' || loader) {
+      for (const id of Object.keys(S.plots)) {
+        const crop = FIELDS[id].crop;
+        if (!wanted(crop)) continue;
+        for (let i = 0; i < Sim.plotCount(); i++) {
+          if (Sim.isRipe(S, id, i)) consider(`plot:${id}:${i}`, plotPos(id, i), { kind: 'plot', id, i }, crop);
+        }
       }
     }
-    for (const [id, p] of Object.entries(S.pens)) {
-      if (p.out > 0 && destinations(S, this.world, PENS[id].product).length) {
-        // A full tray stops the animals, so fuller trays get picked up sooner.
-        const pad = this.world.pad('penOut', id);
-        const boost = (p.out >= CAPS.tray * 0.6 ? 0.2 : 0.6) * (this.keeper ? 0.4 : 1);
-        consider(`penOut:${id}`, pad.pos.clone(), { kind: 'pad', pad }, PENS[id].product, boost);
+    if (this.role === 'keeper' || loader) {
+      for (const [id, p] of Object.entries(S.pens)) {
+        if (p.out > 0 && wanted(PENS[id].product)) {
+          // A full tray stops the animals, so fuller trays get picked up sooner.
+          const pad = this.world.pad('penOut', id);
+          consider(`penOut:${id}`, pad.pos.clone(), { kind: 'pad', pad }, PENS[id].product, p.out >= CAPS.tray * 0.6 ? 0.2 : 0.6);
+        }
       }
     }
-    for (const [id, m] of Object.entries(S.machines)) {
-      if (m.out > 0 && destinations(S, this.world, MACHINES[id].output).length) {
-        const pad = this.world.pad('machOut', id);
-        const boost = (m.out >= CAPS.machineOut * 0.6 ? 0.2 : 0.6) * (this.keeper ? 0.4 : 1);
-        consider(`machOut:${id}`, pad.pos.clone(), { kind: 'pad', pad }, MACHINES[id].output, boost);
+    if (this.role === 'factory' || loader) {
+      for (const [id, m] of Object.entries(S.machines)) {
+        if (m.out > 0 && wanted(MACHINES[id].output)) {
+          const pad = this.world.pad('machOut', id);
+          consider(`machOut:${id}`, pad.pos.clone(), { kind: 'pad', pad }, MACHINES[id].output, m.out >= CAPS.machineOut * 0.6 ? 0.2 : 0.6);
+        }
+      }
+    }
+    if (loader) {
+      // Stalls are a last resort for the truck: it takes goods away from customers.
+      for (const [item, n] of Object.entries(S.shelves)) {
+        if (n > 0 && wanted(item)) {
+          const pad = this.world.pad('shelf', item);
+          consider(`take:${item}`, pad.pos.clone(), { kind: 'take', pad }, item, 2);
+        }
       }
     }
     if (best) { this.target = best; return; }
     // Nothing new to pick: deliver whatever we hold.
-    if (stack.length) { this.mode = 'deliver'; this.plan(S, cap, others); }
+    if (stack.length) { this.mode = 'deliver'; this.plan(S, cap, crew); }
   }
 
-  work(S, cap, fx, others) {
+  work(S, cap, fx, crew) {
     const t = this.target, owner = this.data;
+    const doneGathering = () => owner.stack.length >= cap || (this.role === 'loader' && t.item && truckShort(S, t.item, crew) <= 0);
     if (t.kind === 'plot') {
       const item = Sim.harvest(S, owner, t.id, t.i);
       if (item) fx({ item, from: t.pos.clone().setY(0.6), to: this.stackTop, quiet: true });
@@ -298,11 +338,36 @@ class Farmhand extends Carrier {
       if (owner.stack.length >= cap) this.mode = 'deliver';
       return;
     }
+    if (t.kind === 'take') {
+      const item = truckShort(S, t.item, crew) > 0 && Sim.takeFromShelf(S, owner, t.item);
+      if (item) {
+        fx({ item, from: t.pad.pos.clone().setY(0.9), to: this.stackTop, quiet: true });
+        this.cool = 0.15;
+        if (!doneGathering()) return;
+      }
+      this.target = null;
+      this.mode = owner.stack.length ? 'deliver' : 'gather';
+      return;
+    }
     const ev = padAction(S, this.world, owner, t.pad, this);
     if (ev) {
       fx({ ...ev, quiet: true });
       this.cool = 0.15;
-      if (t.pad.kind.endsWith('Out') && owner.stack.length >= cap) { this.target = null; this.mode = 'deliver'; }
+      if (t.pad.kind.endsWith('Out')) {
+        if (doneGathering()) { this.target = null; this.mode = 'deliver'; }
+        return;
+      }
+      // While unloading, switch to a much more urgent drop-off as soon as there is one
+      // (e.g. once the trough has a few portions, an empty bakery gets the rest).
+      if (owner.stack.length) {
+        const demand = crew.demand || new Set();
+        const uNow = urgency(S, t.pad, demand);
+        for (const item of new Set(owner.stack)) {
+          for (const pad of destinations(S, this.world, item, this.role)) {
+            if (pad !== t.pad && urgency(S, pad, demand) * 3 < uNow) { this.target = null; return; }
+          }
+        }
+      }
       return;
     }
     // Pad has nothing more for us: re-plan.
@@ -315,21 +380,24 @@ class Farmhand extends Carrier {
 
 // Walks between stalls picking up the coins customers leave, so you don't have to.
 class Collector extends Carrier {
-  constructor(world, data) {
-    super(world, WORKER_LOOKS[data.id]);
+  constructor(world, data, i) {
+    super(world, ROLES.collector.look);
     this.data = data;
-    this.home = V(...COLLECTOR_HOME);
+    this.role = 'collector';
+    this.home = roleHome('collector', i);
     this.pos.copy(this.home);
     this.target = null;
+    addBadge(this, 'collector');
   }
 
-  update(S, dt, time, fx) {
+  update(S, dt, time, fx, crew) {
     this.cool -= dt;
     if (!this.target || !(S.stallCoins[this.target.item] > 0)) {
-      // Head for the stall with the most coins, discounted by distance.
+      // Head for the stall with the most coins, discounted by distance; skip ones another collector is on.
+      const taken = new Set(crew.filter(o => o !== this && o.role === 'collector' && o.target).map(o => o.target.item));
       let best = null, bs = -Infinity;
       for (const [item, n] of Object.entries(S.stallCoins)) {
-        if (n <= 0) continue;
+        if (n <= 0 || taken.has(item)) continue;
         const pad = this.world.pad('cash', item);
         const score = n - pad.pos.distanceTo(this.pos) * 0.6;
         if (score > bs) { bs = score; best = pad; }
@@ -449,7 +517,8 @@ export class Agents {
     const S = this.getState();
     for (const w of S.workers) {
       if (this.workers.some(a => a.data === w)) continue;
-      const A = w.kind === 'collector' ? new Collector(this.world, w) : new Farmhand(this.world, w, this.workers.length);
+      const i = this.workers.filter(a => a.role === w.role).length;
+      const A = w.role === 'collector' ? new Collector(this.world, w, i) : new Farmhand(this.world, w, i);
       this.workers.push(A);
     }
 

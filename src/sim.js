@@ -2,7 +2,7 @@
 // Every transfer takes an `owner` ({ stack: [] }) so the player and workers share the same rules.
 import {
   ITEMS, FIELDS, FIELD_GRID, PENS, MACHINES, SHELVES, CAPS, ZONES, UPGRADES,
-  playerCap, workerCap, TRUCK_AWAY, buyCost,
+  playerCap, workerCap, TRUCK_AWAY, buyCost, HIRE_ROLES,
 } from './data.js';
 
 // Game clock for timers. Equals wall-clock time unless a test fast-forwards it with skipTime().
@@ -11,6 +11,7 @@ export const now = () => Date.now() + clockOffset;
 export const skipTime = ms => { clockOffset += ms; };
 
 export const isUnlocked = (S, key) => S.unlocked.includes(key);
+export const factoryTime = (S, id) => MACHINES[id].time * 0.8 ** (S.upgrades.factory || 0);
 // Animals in a pen: the starting herd plus any bought at the "+1" spot.
 export const penCount = (S, id) => PENS[id].count + (S.extra?.[id] || 0);
 export const plotCount = () => FIELD_GRID.cols * FIELD_GRID.rows;
@@ -27,7 +28,14 @@ export function ensure(S) {
   S.stallCoins ||= {};
   S.extra ||= {};
   S.buyPaid ||= {};
-  for (const w of S.workers) if (w.kind === 'cashier') w.kind = 'collector';
+  S.upgrades.factory ??= 0;
+  // Older saves: workers had a `kind` (farmhand/cashier/collector); give them a role.
+  for (const w of S.workers) {
+    if (w.role) continue;
+    const num = Number(String(w.id).replace(/\D/g, '')) || 1;
+    w.role = w.kind === 'collector' || w.kind === 'cashier' ? 'collector' : HIRE_ROLES[w.id] || (num % 2 === 0 ? 'keeper' : 'harvester');
+    delete w.kind;
+  }
   // Drop stall records for stalls that aren't actually unlocked (or got corrupted).
   for (const rec of [S.shelves, S.stallCoins]) {
     for (const k of Object.keys(rec)) {
@@ -44,7 +52,7 @@ export function ensure(S) {
     if (kind === 'machine') S.machines[id] ||= { in: 0, out: 0, progress: 0 };
     if (kind === 'shelf') { S.shelves[id] ??= 0; S.stallCoins[id] ??= 0; }
     if (kind === 'hire' && !S.workers.some(w => w.id === id)) {
-      S.workers.push({ id, kind: id === 'cashier' ? 'collector' : 'farmhand', stack: [] });
+      S.workers.push({ id, role: HIRE_ROLES[id] || 'harvester', stack: [] });
     }
     if (kind === 'truck' && !S.truck) S.truck = { order: null, loaded: {}, awayUntil: 0 };
   }
@@ -66,7 +74,7 @@ export function tick(S, dt) {
   for (const [id, m] of Object.entries(S.machines)) {
     const def = MACHINES[id];
     if (m.in < def.need || m.out >= CAPS.machineOut) continue;
-    m.progress += dt / def.time;
+    m.progress += dt / factoryTime(S, id);
     if (m.progress >= 1) {
       m.progress = 0;
       m.in -= def.need;
@@ -142,6 +150,14 @@ export function stockShelf(S, owner, item) {
 }
 
 // A customer takes one item and drops its price in coins beside the stall. Returns the price, or 0.
+// A truck loader can take goods back off a stall when the truck needs them.
+export function takeFromShelf(S, owner, item) {
+  if (!(S.shelves[item] > 0) || !hasRoom(S, owner)) return null;
+  S.shelves[item]--;
+  owner.stack.push(item);
+  return item;
+}
+
 export function buyFromShelf(S, item) {
   if (!(S.shelves[item] > 0)) return 0;
   S.shelves[item]--;
@@ -247,6 +263,6 @@ export function payBuy(S, b, amount) {
   if (S.buyPaid[b.id] < cost) return { paid: pay };
   S.buyPaid[b.id] = 0;
   S.extra[b.id] = n + 1;
-  if (b.id === 'hand') S.workers.push({ id: `hand${n + 3}`, kind: 'farmhand', stack: [] });
+  if (b.role) S.workers.push({ id: `${b.id}${n + 2}`, role: b.role, stack: [] });
   return { paid: pay, bought: b, count: n + 1 };
 }

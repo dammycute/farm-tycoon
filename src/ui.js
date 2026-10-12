@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ZONES, UPGRADES, playerCap } from './data.js';
+import { ZONES, UPGRADES, ROLES, playerCap } from './data.js';
 import { load, save, wipe, newState } from './state.js';
 import * as Sim from './sim.js';
 import { World, plotPos } from './world.js';
@@ -98,7 +98,7 @@ function fx(ev) {
     pulse(el.coinStat);
   }
   if (ev.bought) {
-    const what = { hand: 'New worker hired!', coop: 'New chicken!', cowpen: 'New cow!' }[ev.bought.id];
+    const what = ev.bought.role ? `${ROLES[ev.bought.role].icon} New ${ROLES[ev.bought.role].name} hired!` : { coop: 'New chicken!', cowpen: 'New cow!' }[ev.bought.id];
     toast(`🎉 <b>${what}</b> (${ev.count}/${ev.bought.max})`, 2400);
     sfx.unlock();
     save(S);
@@ -158,7 +158,7 @@ function guide() {
   const p = agents.player.pos;
   let target = null;
   const affordable = ZONES.filter(z => Sim.zoneVisible(S, z) && S.coins >= z.cost - (S.zonePaid[z.id] || 0));
-  const collector = S.workers.some(w => w.kind === 'collector');
+  const collector = S.workers.some(w => w.role === 'collector');
   const [richest, coins] = Object.entries(S.stallCoins).sort((a, b) => b[1] - a[1])[0] || [];
   if (!collector && coins && (coins >= 10 || (done < 3 && coins > 0))) target = world.pad('cash', richest).pos;
   else if (affordable.length) target = new THREE.Vector3(affordable[0].at[0], 0, affordable[0].at[1]);
@@ -188,8 +188,8 @@ function guide() {
 
 // ---------- upgrades ----------
 function upgradesHtml() {
-  const hasHands = S.workers.some(w => w.kind === 'farmhand');
-  return `<h2>⬆️ Upgrades</h2><div class="ups">${Object.entries(UPGRADES).filter(([, u]) => !u.needsWorker || hasHands).map(([key, u]) => {
+  const hasHands = S.workers.some(w => w.role && w.role !== 'collector');
+  return `<h2>⬆️ Upgrades</h2><div class="ups">${Object.entries(UPGRADES).filter(([, u]) => (!u.needsWorker || hasHands) && (!u.needs || Sim.isUnlocked(S, u.needs))).map(([key, u]) => {
     const lv = S.upgrades[key], max = lv >= u.max, cost = u.cost(lv);
     return `<div class="up">
       <span class="up-icon emo">${u.icon}</span>
